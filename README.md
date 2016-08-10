@@ -7,7 +7,6 @@ A simple class for drawing the libgerbv images using QPainter rather than the ca
   <li>example - example of usage</li>
   <li>LICENSE - GNU GPL v3 license</li>
   <li>README.md - this file</li>
-  <li>TODO - list of things to do</li>
 </ul>
 
 <h3>Building and running the example</h3>
