@@ -19,6 +19,10 @@ A simple class for drawing the libgerbv images using QPainter rather than the ca
   <li>The example will output to the build folder two files: test.png and cairo.png, which are generated using QPainter and cairo correspondingly.</li>
 </ol>
 
+<h3>Macro options</h3>
+There are two macros options in gerbvQt.h: __GERBVQT_MACRO_USE_TEMPIMAGE__ and __GERBVQT_MACRO_CIRCLE_PRECISION__.<br>
+See gerbvQt::drawMacroFlash(...) function for more info on these ones.<br>
+
 <h3>References</h3>
 This project uses Qt, cairo and libgerbv. Links:
 <ul>

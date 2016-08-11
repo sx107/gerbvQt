@@ -82,7 +82,6 @@ int main(int argc, char** argv) {
 	cairo_paint_with_alpha (cr, 1);
 	cairo_surface_flush(surface);
 	
-	cairo_surface_write_to_png(surface, "cairo.png");
-	
+	cairo_surface_write_to_png(surface, "cairo.png");	
 	return 0;
 }

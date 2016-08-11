@@ -1,3 +1,25 @@
+/*
+
+    This file is part of gerbvQt.
+    (c) Kurganov Alexander, 2016 me@sx107.ru
+
+    gerbvQt is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Foobar is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with gerbvQt.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
+
+
 #include "gerbvQt.h"
 #include <iostream>
 #include <algorithm>
@@ -315,11 +337,9 @@ void gerbvQt::drawNetFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap) 
 			drawOblongFlash(point, ap);
 			break;
 		case GERBV_APTYPE_POLYGON :
-			cout << "Polygon!" << endl;
 			drawPolygonFlash(point, ap);
 			break;
 		case GERBV_APTYPE_MACRO:
-			cout << "Macro!" << endl;
 			drawMacroFlash(cNet, ap);
 			break;
 		default:
@@ -352,26 +372,135 @@ void gerbvQt::drawOblongFlash(const QPointF& point, const gerbv_aperture_t* ap) 
 	f.addEllipse(point, ap->parameter[2] / 2.0, ap->parameter[2] / 2.0);
 	painter->fillPath(f, painter->brush());
 }
-void gerbvQt::drawPolygonFlash(const QPointF& center, const gerbv_aperture_t* ap) {
-	QPainterPath f;
-	double radius = ap->parameter[0] / 2.0;
+
+void gerbvQt::generatePolygonPath(QPainterPath& path, const QPointF& center, double radius, int numPoints, double angle) {
 	QPointF hSize(radius, radius);
 	QRectF rect(center - hSize, center + hSize);
 	
-	double cAngle = ap->parameter[2];
-	f.arcMoveTo(rect, cAngle);
-
-	for(int i = 0; i < ap->parameter[1]; i++) {
-		f.arcTo(rect, cAngle, 0.0);
-		cAngle += 360.0 / double(ap->parameter[2]);
+	double cAngle = angle;
+	path.arcMoveTo(rect, cAngle);
+	for(int i = 0; i < numPoints; i++) {
+		path.arcTo(rect, cAngle, 0.0);
+		cAngle += 360.0 / double(numPoints);
 	}
-	f.closeSubpath();
+	path.closeSubpath();
+}
+
+void gerbvQt::drawPolygonFlash(const QPointF& center, const gerbv_aperture_t* ap) {
+	QPainterPath f;
+	generatePolygonPath(f, center, ap->parameter[0] / 2.0, ap->parameter[1], ap->parameter[2]);
 	f.addEllipse(center, ap->parameter[3] / 2.0, ap->parameter[3] / 2.0);
 	painter->fillPath(f, painter->brush());
 }
 
+void gerbvQt::setMacroExposure(bool& var, double exposure) {
+	if(exposure == 0.0) {var = false;}
+	else if (exposure == 1.0) {var = true;}
+	else {var = !var;}
+}
+
 void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap) {
-	gerbv_simplified_amacro_t* mac = ap->simplified;
+	//I can't decide which solution is better.
+	
+	//One solution creates a QPainterPath and uses the += and -= operators.
+	//But they turn bezier curves (used to draw circles) into a line, so circles start to look like
+	//heptagons. So, circles in this solution are drawn as polygons with GERBVQT_MACRO_CIRCLE_PRECISION sides.
+	
+	//The other solution is like the cairo_push_group function. A temporary QImage is created.
+	//The GERBVQT_MACRO_USE_TEMPIMAGE switches to this solution.
+	
+	//Maybe there is another solution, which combines the advantages of these two?
+	
+	#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
+	QImage groupStorage(painter->device()->width(), painter->device()->height(), QImage::Format_ARGB32);
+	QPainter groupPainter;
+	groupPainter.begin(&groupStorage);
+	groupPainter.setTransform(painter->transform());
+	groupPainter.setPen(painter->pen());
+	groupPainter.setBrush(painter->brush());
+	groupPainter.setTransform(QTransform::fromTranslate(cNet->stop_x, cNet->stop_y), true);
+	groupPainter.setRenderHints(painter->renderHints(), true);
+	#else
+	QPainterPath macroPath;
+	macroPath.setFillRule(Qt::WindingFill);
+	#endif
+	
+	bool cExp = true; //Exposure: true is "dark", false is "clear"
+	
+	for(gerbv_simplified_amacro_t* mac = ap->simplified; mac != NULL; mac = mac->next) {
+		double* par = mac->parameter;
+		QPainterPath apShape;
+		QTransform apTransform;
+		
+		switch(mac->type) {
+			case GERBV_APTYPE_MACRO_CIRCLE: {
+				setMacroExposure(cExp, par[CIRCLE_EXPOSURE]);
+				apTransform.rotate(par[4]);
+				double rad = par[CIRCLE_DIAMETER] / 2.0;
+				
+				#ifdef GERBVQT_MACRO_USE_TEMPLATE
+				apShape.addEllipse(QPointF(par[CIRCLE_CENTER_X], par[CIRCLE_CENTER_Y]), rad, rad);
+				#else
+				//Draw circle as a GERBVQT_MACRO_CIRCLE_PRECISION polygon.
+				generatePolygonPath(apShape, QPointF(par[CIRCLE_CENTER_X], par[CIRCLE_CENTER_Y]), rad, GERBVQT_MACRO_CIRCLE_PRECISION, 0);
+				#endif
+			}
+			break;
+			case GERBV_APTYPE_MACRO_OUTLINE: {
+				setMacroExposure(cExp, par[OUTLINE_EXPOSURE]);
+				int numberOfPoints = (int) par[OUTLINE_NUMBER_OF_POINTS] + 1;
+				apTransform.rotate(par[2*(numberOfPoints - 1) + OUTLINE_ROTATION]);
+				
+				
+				apShape.moveTo(par[OUTLINE_FIRST_X], par[OUTLINE_FIRST_Y]);
+				
+				for (int pI = 0; pI < numberOfPoints; pI++) {
+					apShape.lineTo(	par[OUTLINE_FIRST_X + pI*2],
+							par[OUTLINE_FIRST_Y + pI*2]);
+				}
+				apShape.closeSubpath();
+			}
+			break;
+			case GERBV_APTYPE_MACRO_POLYGON: {
+				setMacroExposure(cExp, par[POLYGON_EXPOSURE]);
+				QPointF center(par[POLYGON_CENTER_X], par[POLYGON_CENTER_Y]);
+				if(center == QPointF(0, 0) && par[POLYGON_ROTATION] != 0.0) {
+					cerr << "Polygon rotation error: ";
+					cerr << "According to the Gerber format specification, to rotate the polygon it must be centered at (0, 0) position.";
+					cerr << endl;
+				}
+				generatePolygonPath(apShape, center, par[POLYGON_DIAMETER] / 2.0, par[POLYGON_NUMBER_OF_POINTS], par[POLYGON_ROTATION]);
+			}
+			break;
+			default:
+				cerr << "Unknown macro aptype " << mac->type << endl;
+				break;
+		}
+		
+		apShape = apTransform.map(apShape);
+		
+		#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
+		if(cExp) {groupPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);}
+		else {groupPainter.setCompositionMode(QPainter::CompositionMode_Clear);}
+		groupPainter.fillPath(apShape, painter->brush());
+		#else
+		if(cExp) {macroPath += apShape;}
+		else {macroPath -= apShape;}
+		#endif
+	}
+	
+	#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
+	groupPainter.end();
+	painter->save();
+	painter->resetTransform();
+	painter->drawImage(QPointF(0, 0), groupStorage);
+	painter->restore();
+	#else
+	painter->save();
+	painter->setTransform(QTransform::fromTranslate(cNet->stop_x, cNet->stop_y), true);
+	painter->fillPath(macroPath, painter->brush());
+	painter->restore();
+	#endif
 }
 
 void gerbvQt::generatePareaPolygon(QPainterPath& path, const gerbv_net_t* startNet) {
