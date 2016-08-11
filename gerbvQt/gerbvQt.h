@@ -25,7 +25,7 @@
 #include <QPainter>
 
 //See gerbvQt::drawMacroFlash(...)
-#define GERBVQT_MACRO_USE_TEMPIMAGE 1
+//#define GERBVQT_MACRO_USE_TEMPIMAGE 1
 #define GERBVQT_MACRO_CIRCLE_PRECISION 100
 
 class gerbvQt {
@@ -54,16 +54,20 @@ class gerbvQt {
 		void drawArcNet(const gerbv_net_t* cNet, const gerbv_aperture_t* ap);
 		
 		void generateArcPath(QPainterPath& path, const gerbv_net_t* cNet);
-		void generatePolygonPath(QPainterPath& path, const QPointF& center, double radius, int numPoints, double angle);
+		void generatePolygonPath(QPainterPath& path, const QPointF& center, double radius, int numPoints, double angle, bool ccw = true, double angleTo = 1.e10);
 		
 		void drawNetFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap);
 		void drawCircleFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		void drawRectFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		void drawOblongFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		void drawPolygonFlash(const QPointF& point, const gerbv_aperture_t* ap);
-		void drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap);
 		
+		
+		//Macro
+		void drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap);
 		void setMacroExposure(bool& var, double exposure);
+		void generateMacroOutlinePath(QPainterPath& path, double* parameters);
+		void generateMacroThermalPath(QPainterPath& path, double* parameters);
 		
 		//Composition modes
 		QPainter::CompositionMode darkMode;

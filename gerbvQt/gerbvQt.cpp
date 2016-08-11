@@ -23,6 +23,7 @@
 #include "gerbvQt.h"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 using namespace std;
 
@@ -373,17 +374,20 @@ void gerbvQt::drawOblongFlash(const QPointF& point, const gerbv_aperture_t* ap) 
 	painter->fillPath(f, painter->brush());
 }
 
-void gerbvQt::generatePolygonPath(QPainterPath& path, const QPointF& center, double radius, int numPoints, double angle) {
+void gerbvQt::generatePolygonPath(QPainterPath& path, const QPointF& center, double radius, int numPoints, double angle, bool ccw, double angleTo) {
 	QPointF hSize(radius, radius);
 	QRectF rect(center - hSize, center + hSize);
 	
 	double cAngle = angle;
 	path.arcMoveTo(rect, cAngle);
+	
 	for(int i = 0; i < numPoints; i++) {
+		if(cAngle > angleTo && angleTo != 1.e10 && ccw) {break;}
+		if(cAngle < angleTo && angleTo != 1.e10 && !ccw) {break;}
 		path.arcTo(rect, cAngle, 0.0);
-		cAngle += 360.0 / double(numPoints);
+		cAngle += (ccw?1.0:-1.0)*360.0 / double(numPoints);		
 	}
-	path.closeSubpath();
+	if(cAngle == 1.e10) {path.closeSubpath(); cout << "Closing the subpath." << endl;}
 }
 
 void gerbvQt::drawPolygonFlash(const QPointF& center, const gerbv_aperture_t* ap) {
@@ -411,6 +415,8 @@ void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap
 	
 	//Maybe there is another solution, which combines the advantages of these two?
 	
+	//TODO: Debug the moire and lines 20-22 primitives. I am not sure that they are working properly
+	
 	#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
 	QImage groupStorage(painter->device()->width(), painter->device()->height(), QImage::Format_ARGB32);
 	QPainter groupPainter;
@@ -431,11 +437,12 @@ void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap
 		double* par = mac->parameter;
 		QPainterPath apShape;
 		QTransform apTransform;
-		
 		switch(mac->type) {
 			case GERBV_APTYPE_MACRO_CIRCLE: {
 				setMacroExposure(cExp, par[CIRCLE_EXPOSURE]);
+				
 				apTransform.rotate(par[4]);
+				
 				double rad = par[CIRCLE_DIAMETER] / 2.0;
 				
 				#ifdef GERBVQT_MACRO_USE_TEMPLATE
@@ -448,45 +455,132 @@ void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap
 			break;
 			case GERBV_APTYPE_MACRO_OUTLINE: {
 				setMacroExposure(cExp, par[OUTLINE_EXPOSURE]);
-				int numberOfPoints = (int) par[OUTLINE_NUMBER_OF_POINTS] + 1;
-				apTransform.rotate(par[2*(numberOfPoints - 1) + OUTLINE_ROTATION]);
-				
-				
-				apShape.moveTo(par[OUTLINE_FIRST_X], par[OUTLINE_FIRST_Y]);
-				
-				for (int pI = 0; pI < numberOfPoints; pI++) {
-					apShape.lineTo(	par[OUTLINE_FIRST_X + pI*2],
-							par[OUTLINE_FIRST_Y + pI*2]);
-				}
-				apShape.closeSubpath();
+				apTransform.rotate(par[2*int(par[OUTLINE_NUMBER_OF_POINTS]) + OUTLINE_ROTATION]);
+				generateMacroOutlinePath(apShape, par);
 			}
 			break;
 			case GERBV_APTYPE_MACRO_POLYGON: {
 				setMacroExposure(cExp, par[POLYGON_EXPOSURE]);
 				QPointF center(par[POLYGON_CENTER_X], par[POLYGON_CENTER_Y]);
-				if(center == QPointF(0, 0) && par[POLYGON_ROTATION] != 0.0) {
-					cerr << "Polygon rotation error: ";
-					cerr << "According to the Gerber format specification, to rotate the polygon it must be centered at (0, 0) position.";
-					cerr << endl;
+				if(center != QPointF(0, 0) && par[POLYGON_ROTATION] != 0.0) {
+					cerr << "Polygon rotation error: According to the Gerber format specification, to rotate the polygon it must be centered at (0, 0) position." << endl;
 				}
 				generatePolygonPath(apShape, center, par[POLYGON_DIAMETER] / 2.0, par[POLYGON_NUMBER_OF_POINTS], par[POLYGON_ROTATION]);
 			}
 			break;
+			case GERBV_APTYPE_MACRO_LINE20: {
+				setMacroExposure(cExp, par[LINE20_EXPOSURE]);
+
+				QLineF vec(	par[LINE20_START_X], par[LINE20_START_Y],
+						par[LINE20_END_X], par[LINE20_END_Y]);
+						
+				QLineF tvec; tvec.fromPolar(vec.angle() + 90.0, LINE20_LINE_WIDTH / 2.0);
+				
+				apShape.moveTo(vec.p1() - tvec.p2());
+				apShape.lineTo(vec.p1() + tvec.p2());
+				apShape.lineTo(vec.p2() + tvec.p2());
+				apShape.lineTo(vec.p2() - tvec.p2());
+				apShape.closeSubpath();
+				
+				apTransform.rotate(LINE20_ROTATION);
+				
+			}			
+			break;
+			case GERBV_APTYPE_MACRO_LINE21: {
+				setMacroExposure(cExp, par[LINE21_EXPOSURE]);
+				apTransform.rotate(LINE21_ROTATION);
+				QPointF center(par[LINE21_CENTER_X], par[LINE21_CENTER_Y]);
+				QPointF hSize(par[LINE21_WIDTH] / 2.0, par[LINE21_HEIGHT] / 2.0);
+				apShape.addRect(QRectF(center - hSize, center + hSize));
+			}			
+			break;
+			case GERBV_APTYPE_MACRO_LINE22: {
+				setMacroExposure(cExp, par[LINE22_EXPOSURE]);
+				apTransform.rotate(LINE22_ROTATION);
+				apShape.addRect(par[LINE22_LOWER_LEFT_X],
+						par[LINE22_LOWER_LEFT_Y],
+						par[LINE22_WIDTH],
+						par[LINE22_HEIGHT]);
+			}
+			break;
+			case GERBV_APTYPE_MACRO_MOIRE: {
+				if(par[MOIRE_CENTER_X] != 0 && par[MOIRE_CENTER_Y] != 0 && par[MOIRE_ROTATION] != 0) {
+					cerr << "Thermal rotation error: According to the Gerber format specification, to rotate the thermal it must be centered at (0, 0) position." << endl;
+				}
+				//We will draw it later. It is too complex to be drawn on a single QPainterPath and I am not sure
+				//that there will be no filling issues. But the rotation is applied here
+				//Note: the moire primitive can only be rotated if it is located at (0, 0) -- only the crosshair rotates!
+				apTransform.rotate(par[MOIRE_ROTATION]);
+			}
+			break;
+			case GERBV_APTYPE_MACRO_THERMAL: {
+				//Thermal exposure is always on.
+				if(par[THERMAL_CENTER_X] != 0 && par[THERMAL_CENTER_Y] != 0 && par[THERMAL_ROTATION] != 0) {
+					cerr << "Thermal rotation error: According to the Gerber format specification, to rotate the thermal it must be centered at (0, 0) position." << endl;
+				}
+				apTransform.rotate(par[THERMAL_ROTATION]); //It is easier to do that way
+				generateMacroThermalPath(apShape, par);
+			}
+			break;
+				
 			default:
 				cerr << "Unknown macro aptype " << mac->type << endl;
 				break;
 		}
 		
-		apShape = apTransform.map(apShape);
-		
-		#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
-		if(cExp) {groupPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);}
-		else {groupPainter.setCompositionMode(QPainter::CompositionMode_Clear);}
-		groupPainter.fillPath(apShape, painter->brush());
-		#else
-		if(cExp) {macroPath += apShape;}
-		else {macroPath -= apShape;}
-		#endif
+		if(mac->type != GERBV_APTYPE_MACRO_MOIRE) {
+			apShape = apTransform.map(apShape);
+			#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
+			if(cExp || mac->type == GERBV_APTYPE_MACRO_THERMAL) {groupPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);}
+			else {groupPainter.setCompositionMode(QPainter::CompositionMode_Clear);}
+			groupPainter.fillPath(apShape, painter->brush());
+			#else
+			if(cExp || mac->type == GERBV_APTYPE_MACRO_THERMAL) {
+				macroPath += apShape;
+			}
+			else {macroPath -= apShape;}
+			#endif
+		} else {
+			//Draw a moire
+			QPointF center(par[MOIRE_CENTER_X], par[MOIRE_CENTER_Y]);
+			QPointF hSizeX(par[MOIRE_CROSSHAIR_LENGTH] / 2.0, par[MOIRE_CROSSHAIR_THICKNESS] / 2.0);
+			QPointF hSizeY(par[MOIRE_CROSSHAIR_THICKNESS] / 2.0, par[MOIRE_CROSSHAIR_LENGTH] / 2.0);
+			QPainterPath c1; c1.addRect(QRectF(center - hSizeX, center + hSizeX));
+			QPainterPath c2; c2.addRect(QRectF(center - hSizeY, center + hSizeY));
+			c1 = apTransform.map(c1);
+			c2 = apTransform.map(c2);
+			
+			double ringOuter = par[MOIRE_OUTSIDE_DIAMETER] / 2.0;
+			double ringThickness = par[MOIRE_CIRCLE_THICKNESS];
+			double ringGap = ringThickness + par[MOIRE_GAP_WIDTH];
+			
+			#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
+				groupPainter.fillPath(c1, painter->brush());
+				groupPainter.fillPath(c2, painter->brush());
+				QPainterPath rings;
+				
+				for(int i = 0; i < int(par[MOIRE_NUMBER_OF_CIRCLES]); i++) {
+					double outRadius = ringOuter - i*ringGap;
+					double inRadius = outRadius - ringThickness;
+					
+					rings.addEllipse(center, outRadius, outRadius);
+					rings.addEllipse(center, inRadius, inRadius);
+				}
+				groupPainter.fillPath(rings, painter->brush());
+			#else
+				macroPath += c1;
+				macroPath += c2;
+				
+				for(int i = 0; i < int(par[MOIRE_NUMBER_OF_CIRCLES]); i++) {
+					double outRadius = ringOuter - i*ringGap;
+					double inRadius = outRadius - ringThickness;
+					QPainterPath ring;
+					generatePolygonPath(ring, center, outRadius, GERBVQT_MACRO_CIRCLE_PRECISION, 0);
+					generatePolygonPath(ring, center, inRadius, GERBVQT_MACRO_CIRCLE_PRECISION, 0);
+					macroPath += ring;
+				}
+			#endif
+		}
 	}
 	
 	#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
@@ -500,6 +594,53 @@ void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap
 	painter->setTransform(QTransform::fromTranslate(cNet->stop_x, cNet->stop_y), true);
 	painter->fillPath(macroPath, painter->brush());
 	painter->restore();
+	#endif
+}
+
+void gerbvQt::generateMacroOutlinePath(QPainterPath& path, double* par) {
+	int numberOfPoints = (int) par[OUTLINE_NUMBER_OF_POINTS] + 1;				
+	path.moveTo(par[OUTLINE_FIRST_X], par[OUTLINE_FIRST_Y]);
+	
+	for (int pI = 0; pI < numberOfPoints; pI++) {
+		path.lineTo(	par[OUTLINE_FIRST_X + pI*2],
+				par[OUTLINE_FIRST_Y + pI*2]);
+	}
+	
+	path.closeSubpath();
+}
+
+void gerbvQt::generateMacroThermalPath(QPainterPath& path, double* par) {
+	QPointF center(par[THERMAL_CENTER_X], par[THERMAL_CENTER_Y]);
+	double r_outer = par[THERMAL_OUTSIDE_DIAMETER] / 2.0;
+	double r_inner = par[THERMAL_INSIDE_DIAMETER] / 2.0;
+	double halfgap = par[THERMAL_CROSSHAIR_THICKNESS] / 2.0;
+	
+	double ang_outer = atan2(halfgap, r_outer) * 360.0 / (2.0*M_PI);
+	double ang_inner = atan2(halfgap, r_inner) * 360.0 / (2.0*M_PI);
+	QRectF outerRect(center - QPointF(r_outer, r_outer), center + QPointF(r_outer, r_outer));
+	QRectF innerRect(center - QPointF(r_inner, r_inner), center + QPointF(r_inner, r_inner));
+	
+	#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
+
+		for(int i = 0; i < 4; i++) {
+			path.arcMoveTo(outerRect, ang_outer + i*90);
+			path.arcTo(outerRect, ang_outer + i*90, 90 - ang_outer*2);
+			path.arcTo(innerRect, (i+1)*90 - ang_inner, 0);
+			path.arcTo(innerRect, (i+1)*90 - ang_inner, -(90 - ang_inner*2));
+			path.closeSubpath();
+		}
+	#else
+		for(int i = 0; i < 4; i++) {
+			path.arcMoveTo(innerRect, ang_inner + i*90);
+			path.arcTo(outerRect, ang_outer + i*90, 0);
+			generatePolygonPath(path, center, r_outer, GERBVQT_MACRO_CIRCLE_PRECISION, ang_outer + i*90, true, (i+1)*90 - ang_outer);
+			path.arcTo(outerRect, (i+1)*90 - ang_outer, 0);
+			path.arcTo(innerRect, (i+1)*90 - ang_inner, 0);
+			generatePolygonPath(path, center, r_inner, GERBVQT_MACRO_CIRCLE_PRECISION, (i+1)*90 - ang_inner, false, ang_inner + i*90);
+			path.arcTo(innerRect, ang_inner + i*90, 0);
+			path.arcTo(outerRect, ang_outer + i*90, 0);
+			path.closeSubpath();
+		}
 	#endif
 }
 
