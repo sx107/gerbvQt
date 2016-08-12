@@ -44,7 +44,6 @@ gerbvQt::~gerbvQt() {
 
 void gerbvQt::setMode(bool drawMode, QPainter* _painter) {
 	if(_painter == NULL) {_painter = painter;}
-	cout << "SetMode" << endl;
 	switch(dM) {
 		case dm_CompositionModes:
 			if(drawMode xor invertModes) {_painter->setCompositionMode(QPainter::CompositionMode_SourceOver);}
@@ -66,7 +65,6 @@ void gerbvQt::setMode(bool drawMode, QPainter* _painter) {
 		q.setColor(color);
 		_painter->setBrush(q);
 	}
-	cout << "SetMode end" << endl;
 }
 
 void gerbvQt::setNetstateTransform(QTransform* tr, gerbv_netstate_t *state) {
@@ -108,6 +106,9 @@ void gerbvQt::drawImageToQt(	QPaintDevice * device,
 	
 	//Begin the painting
 	painter->begin(device);
+	
+	//RenderHints
+	painter->setRenderHints(rhints, true);
 	
 	//Set default brush and pen
 	painter->setBrush(color);

@@ -36,6 +36,16 @@ class gerbvQt {
 		gerbvQt();
 		virtual ~gerbvQt();
 		
+		//Main function
+		void drawImageToQt(	QPaintDevice * device,
+					const gerbv_image_t* gImage, 
+					gerbv_user_transformation_t utransform, 
+					const gerbv_render_info_t* renderInfo);
+					
+		//RenderHints
+		void setRenderHints(QPainter::RenderHints _rhints) {rhints = _rhints;}
+		QPainter::RenderHints renderHints(void) {return rhints;}
+
 		//Foreground and background colors
 		void setForegroundColor(const QColor& _color) {fgColor = _color;}
 		void setBackgroundColor(const QColor& _color) {bgColor = _color;}
@@ -49,12 +59,6 @@ class gerbvQt {
 		//(The Qt::Format_Mono QImage does NOT support composition modes)
 		void setDrawingMode(const drawingModeType& _dM) {dM = _dM;}
 		const drawingModeType& drawingMode(void) {return dM;}
-		
-		//Main function
-		void drawImageToQt(	QPaintDevice * device,
-					const gerbv_image_t* gImage, 
-					gerbv_user_transformation_t utransform, 
-					const gerbv_render_info_t* renderInfo);
 		
 		//Returns the painter
 		QPainter* getPainter(void) {return painter;}
@@ -118,6 +122,9 @@ class gerbvQt {
 		QPainter::CompositionMode clearMode;
 		QColor uFgColor;
 		QColor uBgColor;
+		
+		//RenderHints
+		QPainter::RenderHints rhints;		
 };
 
 #endif
