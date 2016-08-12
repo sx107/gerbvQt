@@ -23,6 +23,7 @@
 #include "gerbvQt.h"
 #include <iostream>
 #include <cairo.h>
+#include <QFlags>
 
 const double scaleFactor = 25.4 / 0.01; //One pixel is 0.01mm
 const double border = 50; //50mm border
@@ -30,13 +31,14 @@ const double border = 50; //50mm border
 using namespace std;
 
 int main(int argc, char** argv) {
-	if(argc < 2) {cerr << "Usage: ./gerbvQtexample anyfile" << endl; return 1;}
+	if(argc < 2) {cerr << "Usage: ./gerbvQtexample anygerberfile" << endl; return 1;}
 
 	//Create a project and load one file in it
 	gerbv_project_t *mainProject = gerbv_create_project();
 	gerbv_open_layer_from_filename (mainProject, argv[1]);
 	gerbv_image_t* image = mainProject->file[0]->image;
 	gerbv_image_info_t* gInfo = mainProject->file[0]->image->info;
+	
 	//gInfo->polarity = GERBV_POLARITY_NEGATIVE;
 
 	//Compute the image size
@@ -61,22 +63,23 @@ int main(int argc, char** argv) {
 	RenderInfo.lowerLeftY = gInfo->min_y-border/scaleFactor;
 	
 	//Draw using Qt
-	QImage qtimage(size_x, size_y, QImage::Format_ARGB32);
+	QImage qtimage(size_x, size_y, QImage::Format_Mono);
 	
 	//Fun starts here
 	gerbvQt gqt;
 	
 	//Set fg/bg colors
-	gqt.setForegroundColor(Qt::black);
-	gqt.setBackgroundColor(Qt::white);
+	gqt.setForegroundColor(Qt::color1);
+	gqt.setBackgroundColor(Qt::color0);
 	
 	//Some options (see gerbv.h)
 	gqt.setDrawingMode(gerbvQt::dm_TwoColors);
 	gqt.setFillFullDevice(true);
 	gqt.setInitFill(true);
+	gqt.setRenderHints(QPainter::RenderHints(0));
 	
 	//Draw it!
-	gqt.drawImageToQt(&qtimage, image, mainProject->file[0]->transform, &RenderInfo);
+	gqt.renderLayerToQt(&qtimage, mainProject->file[0], &RenderInfo);
 	
 	//Just to make sure - draw a background
 	QPainter painter(&qtimage);

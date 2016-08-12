@@ -99,7 +99,14 @@ void gerbvQt::fillImage(const gerbv_image_t* gImage) {
 	}
 }
 
-void gerbvQt::drawImageToQt(	QPaintDevice * device,
+void gerbvQt::renderLayerToQt(	QPaintDevice * device,
+				const gerbv_fileinfo_t *fileInfo,
+				const gerbv_render_info_t* renderInfo) {
+	
+	this->renderImageToQt(device, fileInfo->image, fileInfo->transform, renderInfo);
+}
+
+void gerbvQt::renderImageToQt(	QPaintDevice * device,
 				const gerbv_image_t* gImage, 
 				gerbv_user_transformation_t utransform, 
 				const gerbv_render_info_t* renderInfo) {
@@ -108,6 +115,7 @@ void gerbvQt::drawImageToQt(	QPaintDevice * device,
 	painter->begin(device);
 	
 	//RenderHints
+	painter->setRenderHints(~rhints, false);
 	painter->setRenderHints(rhints, true);
 	
 	//Set default brush and pen
@@ -462,6 +470,7 @@ void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap
 	groupPainter.setBrush(painter->brush());
 	groupPainter.setTransform(QTransform::fromTranslate(cNet->stop_x, cNet->stop_y), true);
 	groupPainter.setRenderHints(painter->renderHints(), true);
+	
 	#else
 	QPainterPath macroPath;
 	macroPath.setFillRule(Qt::WindingFill);

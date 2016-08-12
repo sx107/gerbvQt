@@ -37,11 +37,22 @@ class gerbvQt {
 		virtual ~gerbvQt();
 		
 		//Main function
-		void drawImageToQt(	QPaintDevice * device,
+		void renderImageToQt(	QPaintDevice * device,
 					const gerbv_image_t* gImage, 
 					gerbv_user_transformation_t utransform, 
 					const gerbv_render_info_t* renderInfo);
-					
+		
+		// Renders a layer to the device
+		void renderLayerToQt(	QPaintDevice * device,
+					const gerbv_fileinfo_t *fileInfo,
+					const gerbv_render_info_t* renderInfo);
+		
+		//There is no renderProjectToQt method.
+		//And there won't be one.
+		//This is because gerbv stores the color as GdkColor.
+		//I don't want to include any extra liblaries just to work with that
+		//But you may just render every layer yourself. It isn't that hard!
+		
 		//RenderHints
 		void setRenderHints(QPainter::RenderHints _rhints) {rhints = _rhints;}
 		QPainter::RenderHints renderHints(void) {return rhints;}
@@ -59,9 +70,6 @@ class gerbvQt {
 		//(The Qt::Format_Mono QImage does NOT support composition modes)
 		void setDrawingMode(const drawingModeType& _dM) {dM = _dM;}
 		const drawingModeType& drawingMode(void) {return dM;}
-		
-		//Returns the painter
-		QPainter* getPainter(void) {return painter;}
 		
 		//Fill everything with the "background" color before drawing?
 		//Be warned: if you are using the dm_CompositionMode drawing mode, then
@@ -102,8 +110,6 @@ class gerbvQt {
 		void drawOblongFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		void drawPolygonFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		
-
-		
 		
 		//Macro
 		void drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap);
@@ -124,7 +130,7 @@ class gerbvQt {
 		QColor uBgColor;
 		
 		//RenderHints
-		QPainter::RenderHints rhints;		
+		QPainter::RenderHints rhints;
 };
 
 #endif
