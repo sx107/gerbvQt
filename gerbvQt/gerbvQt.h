@@ -30,18 +30,54 @@
 
 class gerbvQt {
 	public:
+		//See setDrawingMode
+		enum drawingModeType {dm_CompositionModes, dm_TwoColors};
+		
 		gerbvQt();
 		virtual ~gerbvQt();
-		void setColor(const QColor& _color) {color = _color;}
+		
+		//Foreground and background colors
+		void setForegroundColor(const QColor& _color) {fgColor = _color;}
+		void setBackgroundColor(const QColor& _color) {bgColor = _color;}
+		const QColor& foregroundColor(void) {return fgColor;}
+		const QColor& backgroundColor(void) {return bgColor;}
+		
+		//Sets the drawing mode.
+		//dm_CompositionModes uses SourceOver and Clear modes for foreground/background (inverse for negative)
+		//dm_TwoColors uses two colors - foreground and background
+		//Second mode is needed if you want to, for example, to draw on a Qt::Format_Mono QImage.
+		//(The Qt::Format_Mono QImage does NOT support composition modes)
+		void setDrawingMode(const drawingModeType& _dM) {dM = _dM;}
+		const drawingModeType& drawingMode(void) {return dM;}
+		
+		//Main function
 		void drawImageToQt(	QPaintDevice * device,
 					const gerbv_image_t* gImage, 
 					gerbv_user_transformation_t utransform, 
 					const gerbv_render_info_t* renderInfo);
 		
-		QPainter* getPainter(void);
+		//Returns the painter
+		QPainter* getPainter(void) {return painter;}
+		
+		//Fill everything with the "background" color before drawing?
+		//Be warned: if you are using the dm_CompositionMode drawing mode, then
+		//the background may be erased!
+		void setInitFill(bool _initFill) {startFill = _initFill;}
+		bool initFill(void) {return startFill;}
+		
+		//Fill the full device or only the "bounding box" of the PCB?
+		void setFillFullDevice(bool _fullyFill) {fullyFill = _fullyFill;}
+		bool fillFullDevice(void) {return fullyFill;}
+		
 	private:
+		QColor fgColor;
+		QColor bgColor;
 		QColor color;
 		QPainter* painter;
+		drawingModeType dM;
+		
+		bool fullyFill;
+		bool startFill;
 		
 		void fillImage(const gerbv_image_t* gImage);
 		void setNetstateTransform(QTransform* tr, gerbv_netstate_t *state);
@@ -62,6 +98,8 @@ class gerbvQt {
 		void drawOblongFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		void drawPolygonFlash(const QPointF& point, const gerbv_aperture_t* ap);
 		
+
+		
 		
 		//Macro
 		void drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap);
@@ -69,9 +107,17 @@ class gerbvQt {
 		void generateMacroOutlinePath(QPainterPath& path, double* parameters);
 		void generateMacroThermalPath(QPainterPath& path, double* parameters);
 		
-		//Composition modes
+		//Set fg/bg
+		void setMode(bool drawMode, QPainter* _painter = NULL);	//Sets the draw mode - true for "dark", false for "clear".
+									//It either works with the bg/fg colors in dm_TwoColors mode
+									//Or with the composition modes in dm_CompositionModes mode
+		bool invertModes;
+		
+		//Composition modes and colors
 		QPainter::CompositionMode darkMode;
 		QPainter::CompositionMode clearMode;
+		QColor uFgColor;
+		QColor uBgColor;
 };
 
 #endif

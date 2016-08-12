@@ -28,15 +28,46 @@
 using namespace std;
 
 gerbvQt::gerbvQt() {
+	bgColor = Qt::white;
+	fgColor = Qt::black;
 	color = Qt::black;
+	dM = gerbvQt::dm_CompositionModes;
 	painter = new QPainter;
+	invertModes = false;
+	fullyFill = false;
+	startFill = true;
 }
 
 gerbvQt::~gerbvQt() {
 	delete painter;
 }
 
-QPainter* gerbvQt::getPainter() {return painter;}
+void gerbvQt::setMode(bool drawMode, QPainter* _painter) {
+	if(_painter == NULL) {_painter = painter;}
+	cout << "SetMode" << endl;
+	switch(dM) {
+		case dm_CompositionModes:
+			if(drawMode xor invertModes) {_painter->setCompositionMode(QPainter::CompositionMode_SourceOver);}
+			else {_painter->setCompositionMode(QPainter::CompositionMode_Clear);}
+			color = fgColor;
+			break;
+		case dm_TwoColors:
+			if(drawMode xor invertModes) {color = fgColor;}
+			else {color = bgColor;}
+			break;
+	}
+	if(_painter->pen().color() != color) {
+		QPen q = _painter->pen();
+		q.setColor(color);
+		_painter->setPen(q);
+	}
+	if(_painter->brush().color() != color) {
+		QBrush q = _painter->brush();
+		q.setColor(color);
+		_painter->setBrush(q);
+	}
+	cout << "SetMode end" << endl;
+}
 
 void gerbvQt::setNetstateTransform(QTransform* tr, gerbv_netstate_t *state) {
 	tr->reset();
@@ -56,11 +87,18 @@ void gerbvQt::setNetstateTransform(QTransform* tr, gerbv_netstate_t *state) {
 }
 
 void gerbvQt::fillImage(const gerbv_image_t* gImage) {
-	painter->fillRect(QRectF(gImage->info->min_x,
-				gImage->info->min_y,
-				gImage->info->max_x - gImage->info->min_x,
-				gImage->info->max_y - gImage->info->min_y),
-				painter->brush());
+	if(fullyFill) {
+		painter->save();
+		painter->resetTransform();
+		painter->fillRect(0, 0, painter->device()->width(), painter->device()->height(), painter->brush());
+		painter->restore();
+	} else {
+		painter->fillRect(QRectF(gImage->info->min_x,
+					gImage->info->min_y,
+					gImage->info->max_x - gImage->info->min_x,
+					gImage->info->max_y - gImage->info->min_y),
+					painter->brush());
+	}
 }
 
 void gerbvQt::drawImageToQt(	QPaintDevice * device,
@@ -110,12 +148,17 @@ void gerbvQt::drawImageToQt(	QPaintDevice * device,
 	if (gImage->info->polarity == GERBV_POLARITY_NEGATIVE) {invertImage = !invertImage;}
 	
 	//Fill the image if we need it
-	if(invertImage) {
-		//TODO: Make normal filling!
-		painter->setCompositionMode(QPainter::CompositionMode_SourceOver);
-		this->fillImage(gImage);
-		painter->setCompositionMode(QPainter::CompositionMode_Clear);
-		
+	if(startFill) {
+		if(invertImage) {
+			//TODO: Make normal filling!
+			setMode(true);
+			this->fillImage(gImage);
+			setMode(false);
+		} else {
+			setMode(false);
+			this->fillImage(gImage);
+			setMode(true);
+		}
 	}
 	
 	//Store and set the layer and state, so we can track when they change
@@ -139,21 +182,12 @@ void gerbvQt::drawImageToQt(	QPaintDevice * device,
 			painter->setTransform(globalTransform);
 			painter->setTransform(layerTransform, true);
 			
-			//Invert the polarity if we need to
-			clearMode = QPainter::CompositionMode_Clear;
-			darkMode = QPainter::CompositionMode_SourceOver;
-			
-			if((cNet->layer->polarity == GERBV_POLARITY_CLEAR) xor invertImage) {
-				clearMode = QPainter::CompositionMode_SourceOver;
-				darkMode = QPainter::CompositionMode_Clear;
-			}
-			
+			invertModes = ((cNet->layer->polarity == GERBV_POLARITY_CLEAR) xor invertImage);
 			
 			//Draw the knockout area
 			gerbv_knockout_t *ko = &(cNet->layer->knockout);
 			if (ko->firstInstance == TRUE) {
-				if(ko->polarity == GERBV_POLARITY_CLEAR) {painter->setCompositionMode(clearMode);}
-				else {painter->setCompositionMode(darkMode);}
+				setMode(ko->polarity != GERBV_POLARITY_CLEAR);
 				cout << "knockout: " << ko->width << " x " << ko->height << endl;
 				painter->fillRect(QRectF(	ko->lowerLeftX - ko->border,
 								ko->lowerLeftY - ko->border,
@@ -164,7 +198,7 @@ void gerbvQt::drawImageToQt(	QPaintDevice * device,
 			}
 			
 			//Set the painter composition mode to darkMode
-			painter->setCompositionMode(darkMode);
+			setMode(true);
 			
 			//Add the state transform
 			painter->setTransform(stateTransform, true);
@@ -419,6 +453,7 @@ void gerbvQt::drawMacroFlash(const gerbv_net_t* cNet, const gerbv_aperture_t* ap
 	
 	#ifdef GERBVQT_MACRO_USE_TEMPIMAGE
 	QImage groupStorage(painter->device()->width(), painter->device()->height(), QImage::Format_ARGB32);
+	groupStorage.fill(QColor(0, 0, 0, 0));
 	QPainter groupPainter;
 	groupPainter.begin(&groupStorage);
 	groupPainter.setTransform(painter->transform());

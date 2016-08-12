@@ -37,14 +37,18 @@ int main(int argc, char** argv) {
 	gerbv_open_layer_from_filename (mainProject, argv[1]);
 	gerbv_image_t* image = mainProject->file[0]->image;
 	gerbv_image_info_t* gInfo = mainProject->file[0]->image->info;
+	//gInfo->polarity = GERBV_POLARITY_NEGATIVE;
 
+	//Compute the image size
 	int size_x = ceil((gInfo->max_x - gInfo->min_x)*scaleFactor)+border*2;
 	int size_y = ceil((gInfo->max_y - gInfo->min_y)*scaleFactor)+border*2;
 
+	//Compute the render info
 	gerbv_render_info_t RenderInfo;
 	
 	RenderInfo.renderType = GERBV_RENDER_TYPE_CAIRO_HIGH_QUALITY;
 	
+	//Same as the image size.
 	RenderInfo.displayWidth = size_x;
 	RenderInfo.displayHeight = size_y;
 	
@@ -56,18 +60,33 @@ int main(int argc, char** argv) {
 	RenderInfo.lowerLeftX = gInfo->min_x-border/scaleFactor;
 	RenderInfo.lowerLeftY = gInfo->min_y-border/scaleFactor;
 	
+	//Draw using Qt
 	QImage qtimage(size_x, size_y, QImage::Format_ARGB32);
 	
+	//Fun starts here
 	gerbvQt gqt;
-	gqt.setColor(Qt::black);
+	
+	//Set fg/bg colors
+	gqt.setForegroundColor(Qt::black);
+	gqt.setBackgroundColor(Qt::white);
+	
+	//Some options (see gerbv.h)
+	gqt.setDrawingMode(gerbvQt::dm_TwoColors);
+	gqt.setFillFullDevice(true);
+	gqt.setInitFill(true);
+	
+	//Draw it!
 	gqt.drawImageToQt(&qtimage, image, mainProject->file[0]->transform, &RenderInfo);
 	
+	//Just to make sure - draw a background
 	QPainter painter(&qtimage);
 	painter.setCompositionMode(QPainter::CompositionMode_DestinationOver);
-	painter.fillRect(0, 0, size_x, size_y, Qt::white);
+	painter.fillRect(0, 0, size_x, size_y, gqt.backgroundColor());
 	
+	//Save the image
 	qtimage.save("test.png");
 	
+	//Draw the image using cairo
 	cairo_surface_t* surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, size_x, size_y);
 	cairo_t* cr = cairo_create (surface);
 	cairo_set_source_rgba (cr, 1,1,1,1);
