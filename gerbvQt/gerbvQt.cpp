@@ -334,7 +334,6 @@ void gerbvQt::drawLineRect(QPointF& start, QPointF& stop, const gerbv_aperture_t
 }
 
 void gerbvQt::generateArcPath(QPainterPath& path, const gerbv_net_t* cNet) {
-	double sign = (cNet->interpolation == GERBV_INTERPOLATION_CW_CIRCULAR ? 1:-1);
 	double ang1 = cNet->cirseg->angle1;
 	double ang2 = cNet->cirseg->angle2;
 	
@@ -342,8 +341,9 @@ void gerbvQt::generateArcPath(QPainterPath& path, const gerbv_net_t* cNet) {
 	topleft -= QPointF(fabs(cNet->cirseg->width)/2.0, fabs(cNet->cirseg->height) / 2.0);
 	QRectF arcRect(topleft, QSizeF(cNet->cirseg->width, cNet->cirseg->height));
 	
-	path.arcMoveTo(arcRect, sign*ang1);
-	path.arcTo(arcRect, sign*ang1, sign*fabs(ang2-ang1));
+	path.arcTo(arcRect,
+			   cNet->interpolation == GERBV_INTERPOLATION_CW_CIRCULAR ? cNet->cirseg->angle2 : cNet->cirseg->angle1,
+			   fabs(ang2-ang1));
 }
 
 void gerbvQt::drawArcNet(const gerbv_net_t* cNet, const gerbv_aperture_t* ap) {
@@ -719,8 +719,8 @@ void gerbvQt::generatePareaPolygon(QPainterPath& path, const gerbv_net_t* startN
 				break;
 			case GERBV_INTERPOLATION_CW_CIRCULAR:
 			case GERBV_INTERPOLATION_CCW_CIRCULAR:
-				path.lineTo(point); //Mhm. Is it right? O_o
 				this->generateArcPath(path, cNet);
+				path.lineTo(point);
 				break;
 			case GERBV_INTERPOLATION_PAREA_END :
 				path.closeSubpath();

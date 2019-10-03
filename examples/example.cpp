@@ -24,6 +24,7 @@
 #include <iostream>
 #include <cairo.h>
 #include <QFlags>
+#include <QtMath>
 
 const double scaleFactor = 25.4 / 0.01; //One pixel is 0.01mm
 const double border = 50; //50mm border
@@ -42,8 +43,8 @@ int main(int argc, char** argv) {
 	//gInfo->polarity = GERBV_POLARITY_NEGATIVE;
 
 	//Compute the image size
-	int size_x = ceil((gInfo->max_x - gInfo->min_x)*scaleFactor)+border*2;
-	int size_y = ceil((gInfo->max_y - gInfo->min_y)*scaleFactor)+border*2;
+	int size_x = qCeil((gInfo->max_x - gInfo->min_x)*scaleFactor)+border*2;
+	int size_y = qCeil((gInfo->max_y - gInfo->min_y)*scaleFactor)+border*2;
 
 	//Compute the render info
 	gerbv_render_info_t RenderInfo;
